@@ -58,6 +58,7 @@
     "holding_minutes": 240,
     "max_signals_per_day": 300,
     "max_markets_price_sync": 30,
-    "price_interval": "1h"
+    "price_interval": "1h",
+    "entry_requires_worth_research": false
   }
 }

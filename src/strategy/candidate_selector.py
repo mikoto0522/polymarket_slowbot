@@ -190,6 +190,8 @@ class CandidateSelector:
                             "direction_suggestion": str(doc_row["direction"]),
                             "trigger_reason": trigger_reason,
                             "confidence": confidence,
+                            "worth_research": worth_research,
+                            "score": score,
                             "rule_trace_json": json.dumps(
                                 rule_trace, ensure_ascii=False, sort_keys=True
                             ),

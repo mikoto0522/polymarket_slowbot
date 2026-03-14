@@ -36,6 +36,7 @@ def generate_daily_report(db: Database, report_dir: Path) -> Path:
 
     paper_summary = db.fetch_today_paper_trade_summary()
     paper_trades = db.fetch_today_paper_trades(limit=100)
+    open_positions = db.fetch_open_positions(limit=100)
     signals = db.fetch_today_paper_signals(limit=200)
 
     lines = [f"# Daily Review ({now.date().isoformat()} UTC)", "", "## Candidate Review List", ""]
@@ -79,12 +80,19 @@ def generate_daily_report(db: Database, report_dir: Path) -> Path:
         [
             f"- total_rows: `{int(paper_summary.get('total_rows', 0.0))}`",
             f"- closed_rows: `{int(paper_summary.get('closed_rows', 0.0))}`",
+            f"- partial_rows: `{int(paper_summary.get('partial_rows', 0.0))}`",
             f"- skipped_rows: `{int(paper_summary.get('skipped_rows', 0.0))}`",
-            f"- wins/losses: `{int(paper_summary.get('win_rows', 0.0))}/"
+            f"- wins/breakeven/losses: `{int(paper_summary.get('win_rows', 0.0))}/"
+            f"{int(paper_summary.get('breakeven_rows', 0.0))}/"
             f"{int(paper_summary.get('loss_rows', 0.0))}`",
             f"- win_rate: `{paper_summary.get('win_rate', 0.0):.2%}`",
             f"- avg_return_pct: `{paper_summary.get('avg_return_pct', 0.0):.4%}`",
             f"- total_pnl (stake units): `{paper_summary.get('total_pnl', 0.0):.6f}`",
+            f"- opened_positions_this_run: `{int(paper_summary.get('opened_positions', 0.0))}`",
+            f"- full_closed_this_run: `{int(paper_summary.get('full_closed_positions', 0.0))}`",
+            f"- partial_closed_this_run: `{int(paper_summary.get('partial_closed_positions', 0.0))}`",
+            f"- currently_open_positions: `{int(paper_summary.get('open_positions', 0.0))}`",
+            f"- currently_open_stake: `{paper_summary.get('open_stake', 0.0):.6f}`",
             "",
         ]
     )
@@ -101,8 +109,28 @@ def generate_daily_report(db: Database, report_dir: Path) -> Path:
                     f"- reason: `{trade['reason']}`",
                     f"- entry: `{trade['entry_ts_utc']}` @ `{trade['entry_price']}`",
                     f"- exit: `{trade['exit_ts_utc']}` @ `{trade['exit_price']}`",
+                    f"- closed_stake: `{trade['closed_stake']}`",
                     f"- return_pct: `{trade['return_pct']}`",
                     f"- pnl: `{trade['pnl']}`",
+                    "",
+                ]
+            )
+
+    lines.extend(["## Open Simulated Positions", ""])
+    if not open_positions:
+        lines.append("- No open positions.")
+        lines.append("")
+    else:
+        for idx, position in enumerate(open_positions, start=1):
+            lines.extend(
+                [
+                    f"### position-{idx}",
+                    f"- market: `{position['market_id']}`",
+                    f"- direction: `{position['direction']}`",
+                    f"- entry: `{position['entry_ts_utc']}` @ `{position['entry_price']}`",
+                    f"- stake_open/stake_total: `{position['stake_open']}` / `{position['stake_total']}`",
+                    f"- confidence: `{position['confidence']}`",
+                    f"- open_reason: `{position['open_reason']}`",
                     "",
                 ]
             )

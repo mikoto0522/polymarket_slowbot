@@ -24,5 +24,8 @@ python -m src.main
 - Market-message linking with explicit link reasons.
 - Candidate selector + rejection reasons + daily markdown report.
 - Shadow mode paper signals (time/market/direction/reason/confidence).
-- Paper trading PnL simulation (`paper_trades`) with daily summary in report.
+- Live-like paper trading:
+  - signal-driven simulated open positions (`paper_positions`)
+  - rule-driven simulated exits (`paper_trades`)
+  - open positions + trade history + PnL in daily report
 - Audit bundle output tracing report to raw market, raw message, AI JSON, and rule decision.

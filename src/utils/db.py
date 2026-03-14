@@ -172,13 +172,17 @@ class Database:
                 direction_suggestion TEXT NOT NULL,
                 trigger_reason TEXT NOT NULL,
                 confidence REAL NOT NULL,
+                worth_research INTEGER NOT NULL DEFAULT 0,
+                score REAL NOT NULL DEFAULT 0.0,
                 rule_trace_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS paper_trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                position_id INTEGER,
                 signal_id INTEGER,
+                signal_key TEXT,
                 ts_utc TEXT NOT NULL,
                 market_id TEXT NOT NULL,
                 document_id INTEGER NOT NULL,
@@ -187,11 +191,35 @@ class Database:
                 entry_price REAL,
                 exit_ts_utc TEXT,
                 exit_price REAL,
+                closed_stake REAL,
                 return_pct REAL,
                 pnl REAL,
                 status TEXT NOT NULL,
                 reason TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS paper_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                signal_key TEXT NOT NULL UNIQUE,
+                signal_id INTEGER,
+                market_id TEXT NOT NULL,
+                document_id INTEGER NOT NULL,
+                direction TEXT NOT NULL,
+                entry_ts_utc TEXT NOT NULL,
+                entry_price REAL NOT NULL,
+                stake_total REAL NOT NULL,
+                stake_open REAL NOT NULL,
+                confidence REAL NOT NULL,
+                status TEXT NOT NULL,
+                close_ts_utc TEXT,
+                close_price REAL,
+                realized_pnl REAL NOT NULL DEFAULT 0.0,
+                realized_return_pct REAL,
+                open_reason TEXT NOT NULL,
+                close_reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS sync_runs (
@@ -216,6 +244,11 @@ class Database:
         self._ensure_column("trade_candidates", "acceptance_reason", "TEXT")
         self._ensure_column("trade_candidates", "rejection_reason", "TEXT")
         self._ensure_column("trade_candidates", "rule_trace_json", "TEXT DEFAULT '{}'")
+        self._ensure_column("paper_signals", "worth_research", "INTEGER DEFAULT 0")
+        self._ensure_column("paper_signals", "score", "REAL DEFAULT 0.0")
+        self._ensure_column("paper_trades", "position_id", "INTEGER")
+        self._ensure_column("paper_trades", "signal_key", "TEXT")
+        self._ensure_column("paper_trades", "closed_stake", "REAL")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         rows = self.conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -533,10 +566,10 @@ class Database:
             """
             INSERT INTO paper_signals(
                 ts_utc, market_id, document_id, direction_suggestion, trigger_reason,
-                confidence, rule_trace_json, created_at
+                confidence, worth_research, score, rule_trace_json, created_at
             ) VALUES (
                 :ts_utc, :market_id, :document_id, :direction_suggestion, :trigger_reason,
-                :confidence, :rule_trace_json, :created_at
+                :confidence, :worth_research, :score, :rule_trace_json, :created_at
             )
             """,
             row,
@@ -565,6 +598,158 @@ class Database:
         )
         return list(cursor.fetchall())
 
+    def fetch_entry_signals(
+        self,
+        limit: int = 300,
+        requires_worth_research: bool = False,
+    ) -> list[sqlite3.Row]:
+        if requires_worth_research:
+            cursor = self.conn.execute(
+                """
+                SELECT *
+                FROM paper_signals
+                WHERE worth_research = 1
+                ORDER BY ts_utc ASC, score DESC, id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                SELECT *
+                FROM paper_signals
+                ORDER BY ts_utc ASC, score DESC, id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        return list(cursor.fetchall())
+
+    def fetch_market_signals_after(self, market_id: str, after_ts_utc: str) -> list[sqlite3.Row]:
+        cursor = self.conn.execute(
+            """
+            SELECT *
+            FROM paper_signals
+            WHERE market_id = ? AND ts_utc > ?
+            ORDER BY ts_utc ASC, id ASC
+            """,
+            (market_id, after_ts_utc),
+        )
+        return list(cursor.fetchall())
+
+    def get_market_snapshot(self, market_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT market_id, end_date, last_price, best_bid, best_ask, spread
+            FROM market_catalog
+            WHERE market_id = ?
+            """,
+            (market_id,),
+        ).fetchone()
+
+    def has_open_position_for_market_direction(self, market_id: str, direction: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT 1
+            FROM paper_positions
+            WHERE market_id = ? AND direction = ? AND status = 'open'
+            LIMIT 1
+            """,
+            (market_id, direction),
+        ).fetchone()
+        return row is not None
+
+    def has_position_for_signal_key(self, signal_key: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM paper_positions WHERE signal_key = ? LIMIT 1",
+            (signal_key,),
+        ).fetchone()
+        return row is not None
+
+    def insert_paper_position(self, row: dict[str, Any]) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO paper_positions(
+                signal_key, signal_id, market_id, document_id, direction, entry_ts_utc,
+                entry_price, stake_total, stake_open, confidence, status,
+                open_reason, created_at, updated_at
+            ) VALUES (
+                :signal_key, :signal_id, :market_id, :document_id, :direction, :entry_ts_utc,
+                :entry_price, :stake_total, :stake_open, :confidence, :status,
+                :open_reason, :created_at, :updated_at
+            )
+            """,
+            row,
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def fetch_open_positions(self, limit: int = 1000) -> list[sqlite3.Row]:
+        cursor = self.conn.execute(
+            """
+            SELECT *
+            FROM paper_positions
+            WHERE status = 'open'
+            ORDER BY entry_ts_utc ASC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return list(cursor.fetchall())
+
+    def fetch_all_positions(self, limit: int = 1000) -> list[sqlite3.Row]:
+        cursor = self.conn.execute(
+            """
+            SELECT *
+            FROM paper_positions
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return list(cursor.fetchall())
+
+    def update_paper_position_on_exit(
+        self,
+        *,
+        position_id: int,
+        close_price: float,
+        close_ts_utc: str,
+        closed_stake: float,
+        realized_pnl_delta: float,
+        status: str,
+        close_reason: str,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE paper_positions
+            SET stake_open = CASE
+                    WHEN stake_open - ? < 0 THEN 0
+                    ELSE stake_open - ?
+                END,
+                close_price = ?,
+                close_ts_utc = ?,
+                realized_pnl = COALESCE(realized_pnl, 0) + ?,
+                status = ?,
+                close_reason = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                closed_stake,
+                closed_stake,
+                close_price,
+                close_ts_utc,
+                realized_pnl_delta,
+                status,
+                close_reason,
+                iso_utc(),
+                position_id,
+            ),
+        )
+        self.conn.commit()
+
     def fetch_today_signal_market_ids(self, limit: int = 300) -> list[str]:
         today = utc_now().date().isoformat()
         cursor = self.conn.execute(
@@ -591,12 +776,12 @@ class Database:
         self.conn.execute(
             """
             INSERT INTO paper_trades(
-                signal_id, ts_utc, market_id, document_id, direction,
-                entry_ts_utc, entry_price, exit_ts_utc, exit_price, return_pct, pnl,
+                position_id, signal_id, signal_key, ts_utc, market_id, document_id, direction,
+                entry_ts_utc, entry_price, exit_ts_utc, exit_price, closed_stake, return_pct, pnl,
                 status, reason, created_at
             ) VALUES (
-                :signal_id, :ts_utc, :market_id, :document_id, :direction,
-                :entry_ts_utc, :entry_price, :exit_ts_utc, :exit_price, :return_pct, :pnl,
+                :position_id, :signal_id, :signal_key, :ts_utc, :market_id, :document_id, :direction,
+                :entry_ts_utc, :entry_price, :exit_ts_utc, :exit_price, :closed_stake, :return_pct, :pnl,
                 :status, :reason, :created_at
             )
             """,
@@ -654,9 +839,11 @@ class Database:
             SELECT
                 COUNT(*) AS total_rows,
                 SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed_rows,
+                SUM(CASE WHEN status = 'partial_exit' THEN 1 ELSE 0 END) AS partial_rows,
                 SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_rows,
                 SUM(CASE WHEN status = 'closed' AND pnl > 0 THEN 1 ELSE 0 END) AS win_rows,
-                SUM(CASE WHEN status = 'closed' AND pnl <= 0 THEN 1 ELSE 0 END) AS loss_rows,
+                SUM(CASE WHEN status = 'closed' AND pnl = 0 THEN 1 ELSE 0 END) AS breakeven_rows,
+                SUM(CASE WHEN status = 'closed' AND pnl < 0 THEN 1 ELSE 0 END) AS loss_rows,
                 COALESCE(SUM(CASE WHEN status = 'closed' THEN pnl ELSE 0 END), 0.0) AS total_pnl,
                 COALESCE(AVG(CASE WHEN status = 'closed' THEN return_pct END), 0.0) AS avg_return_pct
             FROM paper_trades
@@ -671,12 +858,29 @@ class Database:
         return {
             "total_rows": float(total_rows),
             "closed_rows": float(closed_rows),
+            "partial_rows": float(int(row["partial_rows"] or 0)),
             "skipped_rows": float(int(row["skipped_rows"] or 0)),
             "win_rows": float(win_rows),
+            "breakeven_rows": float(int(row["breakeven_rows"] or 0)),
             "loss_rows": float(int(row["loss_rows"] or 0)),
             "total_pnl": float(row["total_pnl"] or 0.0),
             "avg_return_pct": float(row["avg_return_pct"] or 0.0),
             "win_rate": win_rate,
+        }
+
+    def fetch_open_position_summary(self) -> dict[str, float]:
+        row = self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS open_positions,
+                COALESCE(SUM(stake_open), 0.0) AS open_stake
+            FROM paper_positions
+            WHERE status = 'open'
+            """
+        ).fetchone()
+        return {
+            "open_positions": float(int(row["open_positions"] or 0)),
+            "open_stake": float(row["open_stake"] or 0.0),
         }
 
     def fetch_today_paper_trades(self, limit: int = 100) -> list[sqlite3.Row]:
