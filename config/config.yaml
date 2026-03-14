@@ -1,0 +1,61 @@
+{
+  "app": {
+    "name": "polymarket_slowbot",
+    "version": "0.1.0",
+    "timezone": "UTC",
+    "log_level": "INFO",
+    "shadow_mode": true
+  },
+  "storage": {
+    "sqlite_path": "data/slowbot.db",
+    "log_dir": "data/logs",
+    "report_dir": "data/reports",
+    "audit_dir": "data/reports"
+  },
+  "polymarket": {
+    "gamma_base_url": "https://gamma-api.polymarket.com",
+    "clob_base_url": "https://clob.polymarket.com",
+    "page_size": 200,
+    "max_pages": 10,
+    "market_status": {
+      "active": true,
+      "closed": false,
+      "archived": false
+    },
+    "price_history_interval": "1d",
+    "price_history_points": 500
+  },
+  "fees": {
+    "allow_fee_enabled_markets": false,
+    "whitelist_market_ids": [],
+    "whitelist_slugs": []
+  },
+  "external_sources": {
+    "rss_urls": [
+      "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "https://www.coindesk.com/arc/outboundfeeds/rss/"
+    ]
+  },
+  "ai": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "max_retries": 2,
+    "deterministic_mode": true
+  },
+  "strategy": {
+    "min_source_quality": 0.7,
+    "min_confidence": 0.7,
+    "min_relevance": 0.6,
+    "max_spread": 0.06,
+    "max_market_matches_per_doc": 5
+  },
+  "paper_trading": {
+    "enabled": true,
+    "stake_per_signal": 1.0,
+    "holding_minutes": 240,
+    "max_signals_per_day": 300,
+    "max_markets_price_sync": 30,
+    "price_interval": "1h"
+  }
+}

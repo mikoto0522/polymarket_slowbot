@@ -1,0 +1,35 @@
+{
+  "tier_1_official": [
+    "sec.gov",
+    "cftc.gov",
+    "federalreserve.gov",
+    "whitehouse.gov",
+    "who.int",
+    "un.org",
+    "cdc.gov",
+    "nasa.gov",
+    "europarl.europa.eu",
+    "ec.europa.eu"
+  ],
+  "tier_2_mainstream_media": [
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "ft.com",
+    "nytimes.com",
+    "apnews.com",
+    "cnbc.com",
+    "coindesk.com"
+  ],
+  "tier_3_social": [
+    "x.com",
+    "twitter.com",
+    "reddit.com",
+    "t.me",
+    "telegram.org"
+  ],
+  "blacklist": [
+    "example-fake-news.com",
+    "pump-channel.example"
+  ]
+}

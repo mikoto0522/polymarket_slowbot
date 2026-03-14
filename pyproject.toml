@@ -1,0 +1,10 @@
+[project]
+name = "polymarket-slowbot"
+version = "0.1.0"
+description = "Slow-market research bot for Polymarket"
+requires-python = ">=3.10"
+dependencies = ["openai>=2.28.0"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
