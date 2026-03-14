@@ -111,13 +111,17 @@ def main() -> int:
         extractor = AIExtractor(config)
 
         def _analyze_docs() -> dict[str, int]:
-            unanalyzed = db.fetch_unanalyzed_documents(limit=200)
+            ai_cfg = config.get("ai", {})
+            unanalyzed = db.fetch_unanalyzed_documents(limit=int(ai_cfg.get("max_docs_per_run", 20)))
             analyzed_count = 0
+            fallback_count = 0
             for doc in unanalyzed:
                 payload = extractor.analyze(dict(doc))
                 db.insert_document_analysis(int(doc["document_id"]), payload)
                 analyzed_count += 1
-            return {"analyzed": analyzed_count}
+                if str(payload.get("analysis_model", "")).startswith("rule_based_fallback"):
+                    fallback_count += 1
+            return {"analyzed": analyzed_count, "fallback_used": fallback_count}
 
         _run_stage(db=db, stage="ai_analysis", action=_analyze_docs, logger=logger)
 

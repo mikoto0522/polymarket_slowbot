@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 from .contract import validate_ai_output
@@ -58,6 +59,8 @@ class AIExtractor:
         self.base_url = ai_cfg.get("base_url", "https://api.openai.com/v1")
         self.max_retries = int(ai_cfg.get("max_retries", 2))
         self.deterministic_mode = bool(ai_cfg.get("deterministic_mode", True))
+        self.min_request_interval_sec = float(ai_cfg.get("min_request_interval_sec", 0.0))
+        self._last_request_ts = 0.0
         self._openai_client = self._build_openai_client()
 
     def _build_openai_client(self) -> Any:
@@ -66,7 +69,12 @@ class AIExtractor:
         try:
             from openai import OpenAI  # type: ignore
 
-            return OpenAI(api_key=self.api_key, base_url=self.base_url)
+            return OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                max_retries=0,
+                timeout=30.0,
+            )
         except Exception:
             return None
 
@@ -88,11 +96,23 @@ class AIExtractor:
                 return payload, raw_text
             except Exception as exc:
                 last_error = exc
+                # Rate-limit or provider route errors: fail fast to fallback.
+                message = str(exc).lower()
+                if "429" in message or "too many requests" in message:
+                    break
+                if "404" in message and "route not found" in message:
+                    break
                 continue
         raise RuntimeError(f"AI extraction failed after retries: {last_error}")
 
     def _request_openai_text(self, *, user_prompt: str) -> str:
         assert self._openai_client is not None
+        if self.min_request_interval_sec > 0:
+            now = time.monotonic()
+            elapsed = now - self._last_request_ts
+            if elapsed < self.min_request_interval_sec:
+                time.sleep(self.min_request_interval_sec - elapsed)
+        self._last_request_ts = time.monotonic()
 
         # Try Responses API first.
         try:

@@ -40,7 +40,9 @@
     "enabled": true,
     "provider": "openai",
     "model": "gpt-4.1-mini",
-    "max_retries": 2,
+    "max_retries": 0,
+    "max_docs_per_run": 20,
+    "min_request_interval_sec": 0.6,
     "deterministic_mode": true
   },
   "strategy": {
