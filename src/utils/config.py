@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .errors import ConfigError
 
@@ -40,6 +41,17 @@ def _load_dotenv(project_root: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+def _normalize_base_url(base_url: str) -> str:
+    value = (base_url or "").strip()
+    if not value:
+        return "https://api.openai.com/v1"
+    parsed = urlparse(value)
+    path = (parsed.path or "").strip()
+    if path in ("", "/"):
+        return value.rstrip("/") + "/v1"
+    return value
+
+
 def load_config(project_root: Path) -> dict[str, Any]:
     _load_dotenv(project_root)
     config_path = project_root / "config" / "config.yaml"
@@ -52,6 +64,8 @@ def load_config(project_root: Path) -> dict[str, Any]:
     ai_cfg.setdefault("api_key", os.getenv("OPENAI_API_KEY", ""))
     ai_cfg.setdefault("base_url", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     ai_cfg["model"] = os.getenv("OPENAI_MODEL", ai_cfg.get("model", "gpt-4.1-mini"))
-    ai_cfg["base_url"] = os.getenv("OPENAI_BASE_URL", ai_cfg.get("base_url"))
+    ai_cfg["base_url"] = _normalize_base_url(
+        os.getenv("OPENAI_BASE_URL", ai_cfg.get("base_url", "https://api.openai.com/v1"))
+    )
 
     return config

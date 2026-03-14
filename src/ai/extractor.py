@@ -207,8 +207,17 @@ class AIExtractor:
 
     def analyze(self, document: dict[str, Any]) -> dict[str, Any]:
         if self._openai_client is not None:
-            payload, raw_response = self._openai_extract(document)
-            model_name = self.model
+            try:
+                payload, raw_response = self._openai_extract(document)
+                model_name = self.model
+            except Exception as exc:
+                payload, raw_response = self._rule_based_extract(document)
+                validate_ai_output(payload)
+                model_name = "rule_based_fallback_after_ai_error"
+                raw_response = (
+                    f"AI_ERROR: {exc}\n"
+                    f"FALLBACK_JSON: {raw_response}"
+                )
         else:
             payload, raw_response = self._rule_based_extract(document)
             validate_ai_output(payload)
