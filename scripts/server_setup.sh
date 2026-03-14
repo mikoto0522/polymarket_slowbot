@@ -52,7 +52,11 @@ create_venv() {
   return 1
 }
 
-if [ ! -d ".venv" ]; then
+if [ ! -f ".venv/bin/activate" ]; then
+  if [ -d ".venv" ]; then
+    echo "Detected broken .venv, recreating..."
+    rm -rf .venv
+  fi
   create_venv
 fi
 
